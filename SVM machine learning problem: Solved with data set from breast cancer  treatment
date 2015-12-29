@@ -1,0 +1,109 @@
+clear;clc;format long;
+a=[];c=[];
+Given=load('data_file.dat');
+for i=1:679
+    a= [a ; Given(i,10)*Given(i,1:(end-1))];
+end
+b=eye(679);
+for i=1:679
+    c=[c;Given(i,10)];
+end
+%---------------------------------------------------------------------------------------------------------------%
+A=sparse([a b c;zeros(679,9) eye(679) zeros(679,1)]);
+b=[ones(679,1);zeros(679,1)];
+c=sparse([zeros(9,1);ones(679,1);0]);
+G=sparse([eye(9,9) zeros(9,680);zeros(680,689)]);
+e=ones(1358,1);
+%----------------------------------------------------------------------------------------------------------------%
+x_start=ones(689,1);
+z_start=ones(1358,1);
+lambda_start= ones(1358,1);
+%----------------------------------------------------------------------------------------------------------------%
+%Initializing x_k,lambda_k,s_k%
+x_k = x_start;
+lambda_k = lambda_start;
+z_k = z_start;
+
+%ALGO Start%
+for i=1:100
+    vector1=[];vector2=[];vector3=[];vector4=[];vector5=[];
+    x=x_k;
+    lambda = lambda_k;
+    z = z_k;
+    
+    Z= sparse(diag(z_k));                   %1358*679
+    X= sparse(diag(x_k));                   %689*689
+    L= sparse(diag(lambda_k));              %1358*679
+    %-----------------------------------------------------------------------------------------------------------%
+    r_d= G*x-A'*lambda+c;
+    r_p= A*x-z-b;
+    %------------------------------------------------------------------------------------------------------------%
+    
+    Square1=sparse([G zeros(689,1358) -A'; A -eye(1358) zeros(1358,1358) ; zeros(1358,689) L Z]);
+    R1=[-r_d;-r_p;-L*Z*e];
+    delta1= Square1\R1;
+    %------------------------------------------------------------------------------------------------------------%
+    delta_x_affine=delta1(1:689);
+    delta_z_affine=delta1(690:2047);
+    delta_lambda_affine=delta1(2048:3405);
+    %------------------------------------------------------------------------------------------------------------%
+    mu= z'* lambda/1358;
+    %-------------------------------------------------------------------------------------------------------------%
+    alpha=rand(2000,1);
+    for i=1:2000
+        if ([z;lambda]+alpha(i)*[delta_z_affine;delta_lambda_affine])>=0
+            vector1=[vector1;alpha(i)];
+        else
+            vector1=[vector1;0];
+        end
+    end
+    alpha_hat_affine = max(vector1);
+    %-------------------------------------------------------------------------------------------------------------%
+    mu_affine=(z+alpha_hat_affine*delta_z_affine)'*(lambda+alpha_hat_affine*delta_lambda_affine)/1358;
+    sigma=(mu_affine/mu)^3;
+    %-------------------------------------------------------------------------------------------------------------%
+    delta_L_affine=sparse(diag(delta_lambda_affine));
+    delta_Z_affine=sparse(diag(delta_z_affine));
+    R2=[-r_d;-r_p;-L*Z*e-delta_L_affine*delta_Z_affine*e+sigma*mu*e];
+    delta2=Square1\R2;
+    
+    delta_x=delta2(1:689);
+    delta_z=delta2(690:2047);
+    delta_lambda=delta2(2048:3405);
+    %--------------------------------------------------------------------------------------------------------------%
+    tau_k=0.95;
+    %--------------------------------------------------------------------------------------------------------------%
+    for i=1:2000
+        if (z+alpha(i)*delta_z-(1-tau_k)*z)>=0
+            vector2=[vector2;alpha(i)];
+        else
+            vector2=[vector2;0];
+        end
+    end
+    alpha_tau_primal=max(vector2);
+    for i=1:2000
+        if(lambda+alpha(i)*delta_lambda-(1-tau_k)*lambda)>=0
+            vector3=[vector3;alpha(i)];
+        else
+            vector3=[vector3;0];
+        end
+    end
+    alpha_tau_dual=max(vector3);
+    %-------------------------------------------------------------------------------------------------------------%
+    alpha_hat = min(alpha_tau_primal,alpha_tau_dual);
+    %--------------------------------------------------------------------------------------------------------------%
+    x_k=x_k+alpha_hat*delta_x;
+    z_k=z_k+alpha_hat*delta_z;
+    lambda_k=lambda_k+alpha_hat*delta_lambda;
+end
+w=x(1:9);
+zeta=x(10:688);
+gamma=x(689);
+fprintf('The minimized w vector is\n');
+w
+fprintf('The minimized zeta is \n');
+zeta
+fprintf('The minimized gamma is \n');
+gamma
+
+%--------------------------------------END--------------------------END-----------------------------------------%
